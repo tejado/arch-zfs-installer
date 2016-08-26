@@ -8,5 +8,4 @@ echo "Server = http://archzfs.com/\$repo/\$arch" >> /etc/pacman.conf
 pacman-key -r 5E1ABF240EE7A126
 pacman-key --lsign-key 5E1ABF240EE7A126
 
-pacman -Syy --noconfirm archzfs-git
-
+pacman -Syy --noconfirm zfs-linux-git
