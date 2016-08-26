@@ -80,7 +80,6 @@ zfs create zroot/home -o mountpoint=/home
 zfs create zroot/var -o mountpoint=legacy -o xattr=sa -o acltype=posixacl
 zfs create zroot/srv -o mountpoint=legacy
 zfs create zroot/etc -o mountpoint=legacy
-zfs create zroot/db -o mountpoint=legacy -o recordsize=8K -o primarycache=metadata -o logbias=throughput
 
 zpool set bootfs=zroot zroot
 zpool set cachefile=/etc/zfs/zpool.cache zroot
@@ -101,7 +100,6 @@ zpool import -d /dev/mapper/ -R "$Mount" zroot
 mkdir "$Mount/etc/"
 mkdir "$Mount/srv/"
 mkdir "$Mount/var/"
-mkdir "$Mount/db/"
 mkdir "$Mount/boot/"
 
 mkfs.ext4 -F "$DiskBoot" > /dev/null 2>&1
@@ -110,7 +108,6 @@ mount "$DiskBoot" "$Mount/boot/"
 mount -t zfs zroot/etc "$Mount/etc/"
 mount -t zfs zroot/srv "$Mount/srv/"
 mount -t zfs zroot/var "$Mount/var/"
-mount -t zfs zroot/db "$Mount/db/"
 
 mkdir "$Mount/etc/zfs/"
 cp "/etc/zfs/zpool.cache" "$Mount/etc/zfs/zpool.cache"
