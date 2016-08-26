@@ -1,0 +1,115 @@
+#!/usr/bin/bash
+
+cd $(dirname $0)
+
+source ./config
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Install ZFS inside chroot"
+echo ""
+echo "--------------------------------------------------------"
+./install-zfs-chroot > /dev/null 2>&1
+systemctl enable zfs.target > /dev/null 2>&1
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Install yaourt"
+echo ""
+echo "--------------------------------------------------------"
+./install-yaourt > /dev/null 2>&1
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Changing partitions configuration files"
+echo ""
+echo "--------------------------------------------------------"
+pacman -S archiso --noconfirm > /dev/null 2>&1
+
+# sed -i -r 's/(HOOKS=".+block\s)(filesystems.*")/\1sd-encrypt zfs sd-lvm2 \2/g' "/etc/mkinitcpio.conf"
+# sed -i -r 's/(HOOKS=".+udev\s)(.*")/\1systemd \2/g' "/etc/mkinitcpio.conf"
+# cat "/etc/mkinitcpio.conf" | grep -iP "^HOOKS="
+sed -i -r 's/(HOOKS=").*(")/\1base udev systemd autodetect modconf block keyboard sd-encrypt zfs sd-lvm2 filesystems fsck\2/g' "/etc/mkinitcpio.conf"
+
+files=$(for i in ${RaidLabels[@]}; do echo -n "/boot/luks/$i.head /boot/luks/$i.key "; done)
+sed -i -r 's|(FILES=".*)"|\1'"$files"'"|g' "/etc/mkinitcpio.conf"
+sed -i -r 's|(FILES=".*)\s"|\1"|g' "/etc/mkinitcpio.conf"
+cat "/etc/mkinitcpio.conf" | grep -iP "^FILES="
+
+
+parts=$(dmsetup ls --target crypt --exec "echo" | sort)
+IFS=$'\n' RaidLabels=($(sort <<<"${RaidLabels[*]}"))
+i=0
+for p in $parts
+do
+	map[i]=$(basename $p)
+	part[i]=$(cryptsetup status $p | grep "device:" | sed -r 's/.*\:\s+(.*)/\1/g')
+	id[i]=$(for link in /dev/disk/by-id/*; do if [[ "$(readlink -f $link)" == "${part[i]}" ]]; then echo $link; fi; done)
+	echo "${map[i]}    ${id[i]}    /boot/luks/${RaidLabels[i]}.key    header=/boot/luks/${RaidLabels[i]}.head"
+	i=$(($i+1))
+done | sort > "/etc/crypttab.initramfs"
+
+genfstab -U -p / | sed -r 's|^(zroot(/home)?\s+/.+)|#\1|g' | grep -iv "/etc/resolv.conf" > "/etc/fstab"
+
+# FIXME not working
+# sed -i -r 's|'"${DiskBoot}1"'|UUID='"$(blkid ${DiskBoot}1 -s UUID -o value)"'|g' "/etc/fstab"
+
+echo "--------------------------------------------------------"
+echo ""
+echo " System settings"
+echo ""
+echo "--------------------------------------------------------"
+#passwd
+#nano "/etc/locale.gen"
+sed -i -r 's/#(en_US.UTF-8.*)/\1/g' "/etc/locale.gen"
+locale-gen  > /dev/null 2>&1
+ln -s "/usr/share/zoneinfo/$TimeZone" "/etc/localtime"
+echo "$Hostname" > "/etc/hostname"
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Installing GRUB and making initramfs image"
+echo ""
+echo "--------------------------------------------------------"
+pacman -S --noconfirm grub-bios > /dev/null 2>&1
+mkinitcpio -p linux > /dev/null 2>&1
+grub-install "${DiskBoot}" --force > /dev/null 2>&1
+# grub-mkconfig -o /boot/grub/grub.cfg
+echo 'set timeout=2
+set default=0
+
+# (0) Arch Linux
+menuentry "Arch Linux" {
+    search --no-floppy --label --set=root zroot
+    linux /vmlinuz-linux zfs=zroot rw zfs_force=1 zfs.zfs_arc_max=536870912
+    initrd /initramfs-linux.img
+}' > /boot/grub/grub.cfg
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Configuring user settings"
+echo ""
+echo "--------------------------------------------------------"
+pacman -S --noconfirm sudo > /dev/null 2>&1
+useradd -m -G wheel -s /bin/bash "$User"
+clear
+echo "********************************************************"
+echo ""
+passwd "$User"
+echo ""
+echo "********************************************************"
+clear
+sed -i -r 's/^#+\s*(%wheel\s+ALL=\(ALL\)\s+ALL)$/\1/g' /etc/sudoers
+sed -i -r 's/^#+\s*(%sudo\s+ALL=\(ALL\)\s+ALL)$/\1/g' /etc/sudoers
+passwd -l root
+sed -i -r 's/^(umask\s+)[0-9]+$/\1077/g' /etc/profile
+echo "Defaults:$User timestamp_timeout=60" >> /etc/sudoers
+echo "kernel.sysrq = 1" > /etc/sysctl.d/99-sysctl.conf
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Installing Network Manager"
+echo ""
+echo "--------------------------------------------------------"
+pacman -S --noconfirm networkmanager openssh > /dev/null 2>&1
+systemctl enable NetworkManager > /dev/null 2>&1

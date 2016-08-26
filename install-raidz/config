@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+
+Hostname="sithViewcy"
+DiskBoot="/dev/disk/by-id/virtio-boot"
+RaidDisks=("/dev/disk/by-id/virtio-z1" "/dev/disk/by-id/virtio-z2" "/dev/disk/by-id/virtio-z3")
+RaidLabels=("z1" "z2" "z3")
+SwapSize="1G"
+TimeZone="Europe/Kiev"
+User=avi9526

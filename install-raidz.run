@@ -1,0 +1,146 @@
+#!/usr/bin/bash
+
+# Run on guest following command:
+#
+# passwd # define root password
+# systemctl start sshd.service # start ssh server
+# ip ad # check ip of machine to connect by ssh
+#
+# Then connect by SSH from host
+#
+# scp ./install root@IP:
+# ssh root@IP
+# fdisk -l # check available disks
+# nano ./install # edit DiskBoot and DiskRoot variable to match existing disks
+# chmod +x ./install-raidz1
+# ./install-raidz1
+
+source ./install-raidz/config
+
+Mount="/mnt"
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Creating boot partition"
+echo ""
+echo "--------------------------------------------------------"
+dd if=/dev/zero of="$DiskBoot" bs=512 count=20480 > /dev/null 2>&1
+parted -s -a optimal "$DiskBoot" -- mklabel msdos mkpart primary ext4 0% 100%
+DiskGrub="$DiskBoot"
+DiskBoot="${DiskBoot}-part1"
+echo "--------------------------------------------------------"
+echo ""
+echo " Creating root partitions"
+echo ""
+echo "--------------------------------------------------------"
+# echo "Overriding partition with pseudo-random data..."
+# dd if=/dev/urandom of="${DiskRoot}" bs=4M
+i=0
+for Part in ${RaidDisks[@]}
+do
+	Key="${RaidLabels[$i]}.key"
+	Head="${RaidLabels[$i]}.head"
+	Map="${RaidLabels[$i]}_crypt"
+	truncate -s 2M "$Head"
+	dd if=/dev/urandom of="$Key" bs=512 count=4 iflag=fullblock > /dev/null 2>&1
+	cryptsetup -q luksFormat -c aes-xts-plain64 -s 512 -d "$Key" "$Part" --header "$Head"
+	cryptsetup -q luksOpen -d "$Key" "$Part" "$Map" --header "$Head"
+# 	parted -s -a optimal "/dev/mapper/$Map" -- \
+# 		mklabel gpt \
+# 		mkpart primary 0% 100% \
+# 		name 1 "${RaidLabels[$i]}"
+	ZParts[i]="/dev/mapper/${Map}"
+	i=$((i+1))
+done
+sleep 5
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Install ZFS"
+echo ""
+echo "--------------------------------------------------------"
+./install-raidz/install-zfs > /dev/null 2>&1
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Configure ZFS"
+echo ""
+echo "--------------------------------------------------------"
+modprobe zfs
+
+zpool create -f -o ashift=12 zroot raidz1 ${ZParts[@]}
+
+zfs set atime=on zroot
+zfs set relatime=on zroot
+zfs set compression=on zroot
+
+zfs set mountpoint=/ zroot
+zfs create zroot/home -o mountpoint=/home
+zfs create zroot/var -o mountpoint=legacy -o xattr=sa -o acltype=posixacl
+zfs create zroot/srv -o mountpoint=legacy
+zfs create zroot/etc -o mountpoint=legacy
+zfs create zroot/db -o mountpoint=legacy -o recordsize=8K -o primarycache=metadata -o logbias=throughput
+
+zpool set bootfs=zroot zroot
+zpool set cachefile=/etc/zfs/zpool.cache zroot
+
+zfs create -V 8G -b $(getconf PAGESIZE) \
+	-o primarycache=metadata \
+	-o com.sun:auto-snapshot=false zroot/swap
+sleep 2
+mkswap -f /dev/zvol/zroot/swap
+swapon /dev/zvol/zroot/swap
+sleep 2
+swapoff /dev/zvol/zroot/swap
+
+zpool export zroot
+
+zpool import -d /dev/mapper/ -R "$Mount" zroot
+
+mkdir "$Mount/etc/"
+mkdir "$Mount/srv/"
+mkdir "$Mount/var/"
+mkdir "$Mount/db/"
+mkdir "$Mount/boot/"
+
+mkfs.ext4 -F "$DiskBoot" > /dev/null 2>&1
+mount "$DiskBoot" "$Mount/boot/"
+
+mount -t zfs zroot/etc "$Mount/etc/"
+mount -t zfs zroot/srv "$Mount/srv/"
+mount -t zfs zroot/var "$Mount/var/"
+mount -t zfs zroot/db "$Mount/db/"
+
+mkdir "$Mount/etc/zfs/"
+cp "/etc/zfs/zpool.cache" "$Mount/etc/zfs/zpool.cache"
+
+genfstab -U -p /mnt | sed -r 's|^(zroot(/home)?\s+/.+)|#\1|g' > "$Mount/etc/fstab"
+echo "/dev/zvol/zroot/swap    none            swap            discard 0 0" >> "$Mount/etc/fstab"
+
+mkdir "$Mount/boot/luks/"
+mv *.{key,head} "$Mount/boot/luks/"
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Install packages"
+echo ""
+echo "--------------------------------------------------------"
+pacstrap "$Mount" base base-devel wget > /dev/null 2>&1
+
+echo "--------------------------------------------------------"
+echo ""
+echo " Run chroot"
+echo ""
+echo "--------------------------------------------------------"
+cp -r "./install-raidz" "$Mount/"
+arch-chroot "$Mount" "/install-raidz/install-chroot"
+
+echo "--------------------------------------------------------"
+echo " Unmounting partitions"
+echo "--------------------------------------------------------"
+rm -r "$Mount/install-raidz/"
+umount "$Mount/boot"
+umount "$Mount"/* > /dev/null 2>&1
+zfs umount -a
+zpool export zroot
+reboot

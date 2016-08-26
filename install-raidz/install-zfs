@@ -1,0 +1,12 @@
+#!/bin/bash
+
+dirmngr </dev/null
+
+echo "[demz-repo-archiso]" >> /etc/pacman.conf
+echo "Server = http://demizerone.com/\$repo/\$arch" >> /etc/pacman.conf
+
+pacman-key -r 5E1ABF240EE7A126
+pacman-key --lsign-key 5E1ABF240EE7A126
+
+pacman -Syy --noconfirm archzfs-git
+

@@ -1,0 +1,23 @@
+#!/usr/bin/bash
+
+dir=$(pwd)
+
+cd "/tmp/"
+wget -q "https://aur.archlinux.org/cgit/aur.git/snapshot/package-query.tar.gz" &
+wget -q "https://aur.archlinux.org/cgit/aur.git/snapshot/yaourt.tar.gz" &
+wait
+tar -xvf package-query.tar.gz &
+tar -xvf yaourt.tar.gz &
+wait
+cd "./package-query"
+chown -R nobody:nobody ./
+pacman -S yajl --noconfirm
+sudo -u nobody makepkg -s
+pacman -U --noconfirm "package-query"*".pkg.tar.xz"
+cd "../"
+cd "./yaourt"
+chown -R nobody:nobody ./
+sudo -u nobody makepkg -s
+pacman -U --noconfirm "yaourt"*".pkg.tar.xz"
+
+cd "$dir"
