@@ -59,6 +59,7 @@ echo ""
 echo " Install ZFS"
 echo ""
 echo "--------------------------------------------------------"
+dirmngr </dev/null
 ./install-raidz/install-zfs > /dev/null 2>&1
 
 echo "--------------------------------------------------------"

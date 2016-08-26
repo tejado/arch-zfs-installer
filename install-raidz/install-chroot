@@ -9,7 +9,7 @@ echo ""
 echo " Install ZFS inside chroot"
 echo ""
 echo "--------------------------------------------------------"
-./install-zfs-chroot > /dev/null 2>&1
+./install-zfs > /dev/null 2>&1
 systemctl enable zfs.target > /dev/null 2>&1
 
 echo "--------------------------------------------------------"

@@ -1,7 +1,5 @@
 #!/bin/bash
 
-dirmngr </dev/null
-
 echo "[archzfs]" >> /etc/pacman.conf
 echo "Server = http://archzfs.com/\$repo/\$arch" >> /etc/pacman.conf
 
