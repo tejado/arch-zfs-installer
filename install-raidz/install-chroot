@@ -14,13 +14,6 @@ systemctl enable zfs.target > /dev/null 2>&1
 
 echo "--------------------------------------------------------"
 echo ""
-echo " Install yaourt"
-echo ""
-echo "--------------------------------------------------------"
-./install-yaourt > /dev/null 2>&1
-
-echo "--------------------------------------------------------"
-echo ""
 echo " Changing partitions configuration files"
 echo ""
 echo "--------------------------------------------------------"
@@ -106,10 +99,3 @@ sed -i -r 's/^(umask\s+)[0-9]+$/\1077/g' /etc/profile
 echo "Defaults:$User timestamp_timeout=60" >> /etc/sudoers
 echo "kernel.sysrq = 1" > /etc/sysctl.d/99-sysctl.conf
 
-echo "--------------------------------------------------------"
-echo ""
-echo " Installing Network Manager"
-echo ""
-echo "--------------------------------------------------------"
-pacman -S --noconfirm networkmanager openssh > /dev/null 2>&1
-systemctl enable NetworkManager > /dev/null 2>&1
